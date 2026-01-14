@@ -92,6 +92,25 @@ class BotController:
                 f"Files Collected (Current): {files}"
             )
 
+        @self.bot.on_message(filters.command("join") & filters.user(Config.ADMIN_IDS) if Config.ADMIN_IDS else filters.command("join"))
+        async def join_command(client, message):
+            if not self._check_admin(message):
+                return
+            
+            try:
+                if len(message.command) < 2:
+                    await message.reply_text("Usage: /join <link or username>")
+                    return
+                
+                link = message.command[1]
+                await message.reply_text(f"Trying to join {link}...")
+                
+                chat = await self.userbot.join_chat(link)
+                await message.reply_text(f"✅ Successfully joined **{chat.title}**!")
+            except Exception as e:
+                await message.reply_text(f"❌ Failed to join: {e}")
+
+
     def _check_admin(self, message: Message) -> bool:
         if not Config.ADMIN_IDS:
             return True # Allow all if no admins set
