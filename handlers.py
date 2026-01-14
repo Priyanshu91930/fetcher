@@ -635,7 +635,13 @@ async def wait_and_collect_files(
         # Check for new messages from the bot
         if bot_username:
             try:
+                # Collect messages and reverse to process chronologically (oldest first)
+                messages = []
                 async for message in client.get_chat_history(f"@{bot_username}", limit=100):
+                    messages.append(message)
+                
+                # Process in chronological order (oldest to newest)
+                for message in reversed(messages):
                     if message.id in collected_media:
 
                         # Check if message was edited since we last saw it
