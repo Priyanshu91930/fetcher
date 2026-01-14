@@ -39,6 +39,8 @@ PROCESSED_FILE = "processed_series.txt"
 processed_series: Set[str] = set()  # Track series channel usernames
 processed_seasons: Set[str] = set()  # Track season identifiers
 collected_media: dict[int, int] = {} # Map message_id -> edit_date (timestamp)
+forwarded_files: Set[str] = set()  # Track unique file IDs to prevent duplicate forwards
+
 
 
 
@@ -696,6 +698,21 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
     # Check if it's a media message
     if is_media_message(message):
         media_info = get_media_info(message)
+        
+        # Get unique file identifier to prevent duplicate forwards
+        file_unique_id = None
+        if message.video:
+            file_unique_id = message.video.file_unique_id
+        elif message.document:
+            file_unique_id = message.document.file_unique_id
+        elif message.audio:
+            file_unique_id = message.audio.file_unique_id
+        
+        # Skip if we've already forwarded this exact file
+        if file_unique_id and file_unique_id in forwarded_files:
+            logger.debug(f"Skipping duplicate file: {media_info}")
+            return False
+        
         logger.info(f"Received media: {media_info}")
         
         # Forward to destination
@@ -704,8 +721,13 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
         )
         
         if success:
+            # Mark file as forwarded
+            if file_unique_id:
+                forwarded_files.add(file_unique_id)
+            
             state.files_received += 1
             logger.info(f"Forwarded ({state.files_received}): {media_info}")
+
             await report_status(
                 f"🔄 Processing: {state.current_series}\n"
                 f"Season: {state.current_season}\n"
