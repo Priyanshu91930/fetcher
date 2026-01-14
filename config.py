@@ -55,7 +55,7 @@ class Config:
     BOT_START_DELAY = float(os.getenv("BOT_START_DELAY", "3.0"))
     
     # Maximum wait time for file bot response (in seconds)
-    FILE_WAIT_TIMEOUT = float(os.getenv("FILE_WAIT_TIMEOUT", "120.0"))
+    FILE_WAIT_TIMEOUT = float(os.getenv("FILE_WAIT_TIMEOUT", "40.0"))
 
     
     # How many series to process per run (0 = unlimited)

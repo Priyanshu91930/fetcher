@@ -486,15 +486,17 @@ async def click_season_button(
             return await handle_bot_url(client, button.url)
         elif button.callback_data:
             # Callback button - click it and see what happens
+            state.waiting_for_files = True  # Enable listener BEFORE sleep to catch rapid responses
+            
             await message.click(button.callback_data)
             await safe_sleep(Config.BUTTON_CLICK_DELAY, "after callback")
             
             # The bot might send a message with a URL button
             # Or directly start sending files
-            state.waiting_for_files = True
             await wait_and_collect_files(client)
             state.waiting_for_files = False
             return True
+
             
     except FloodWait as e:
         await handle_flood_wait(e)
@@ -594,8 +596,9 @@ async def wait_and_collect_files(
         # Check for new messages from the bot
         if bot_username:
             try:
-                async for message in client.get_chat_history(f"@{bot_username}", limit=10):
+                async for message in client.get_chat_history(f"@{bot_username}", limit=100):
                     if message.id in collected_media:
+
                         # Check if message was edited since we last saw it
                         last_edit = collected_media[message.id]
                         current_edit = int(message.edit_date.timestamp()) if message.edit_date else int(message.date.timestamp())
