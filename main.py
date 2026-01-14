@@ -70,15 +70,20 @@ async def main():
         me = await userbot.get_me()
         logger.info(f"Userbot started as: {me.first_name} (@{me.username or 'N/A'})")
         
-        # Refresh dialogs to populate peer cache (fixes "Peer id invalid" on fresh sessions)
-        logger.info("Refreshing dialogs...")
-        try:
-            async for _ in userbot.get_dialogs(limit=50):
-                pass
-        except:
-             pass
+        # Refresh dialogs in background to populate peer cache without blocking
+        async def refresh_dialogs():
+            logger.info("Refreshing dialogs in background...")
+            try:
+                async for _ in userbot.get_dialogs(limit=50):
+                    pass
+                logger.info("Dialog refresh complete.")
+            except Exception as e:
+                logger.warning(f"Dialog refresh failed: {e}")
 
-        # Verify access to destination channel
+        asyncio.create_task(refresh_dialogs())
+
+        # Verify access to destination channel (with a small delay to let cache warm up)
+        await asyncio.sleep(2)
         try:
             dest = await userbot.get_chat(Config.DESTINATION_CHANNEL)
             logger.info(f"Verified access to Destination Channel: {dest.title} ({dest.id})")
@@ -86,6 +91,7 @@ async def main():
             logger.error(f"⚠️ Could not access Destination Channel ({Config.DESTINATION_CHANNEL}): {e}")
             logger.error("Make sure the userbot has joined this channel!")
             logger.error("Try sending /join <invite_link> to the Control Bot.")
+
 
         
         # Register real-time handlers for userbot
