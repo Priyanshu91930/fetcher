@@ -38,7 +38,8 @@ PROCESSED_FILE = "processed_series.txt"
 # Track processed items to avoid duplicates
 processed_series: Set[str] = set()  # Track series channel usernames
 processed_seasons: Set[str] = set()  # Track season identifiers
-collected_media: Set[int] = set()
+collected_media: dict[int, int] = {} # Map message_id -> edit_date (timestamp)
+
 
 
 def load_processed_data():
@@ -593,14 +594,19 @@ async def wait_and_collect_files(
         # Check for new messages from the bot
         if bot_username:
             try:
-                # Increased limit to ensure we don't miss burst messages
-                async for message in client.get_chat_history(f"@{bot_username}", limit=50):
+                async for message in client.get_chat_history(f"@{bot_username}", limit=10):
                     if message.id in collected_media:
-                        continue
+                        # Check if message was edited since we last saw it
+                        last_edit = collected_media[message.id]
+                        current_edit = int(message.edit_date.timestamp()) if message.edit_date else int(message.date.timestamp())
+                        
+                        if current_edit <= last_edit:
+                            continue # No new changes
                     
                     # Check if this is a recent message (within our session)
-                    if message.date.timestamp() < start_time - 60:  # Skip old messages
+                    if message.date.timestamp() < start_time - 60 and not message.edit_date:  # Skip old messages unless edited
                         continue
+
                     
                     # Process the message
                     files_found = await handle_file_bot_message(client, message)
@@ -628,11 +634,16 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
     Returns:
         True if media was found/forwarded
     """
-    if message.id in collected_media:
-        return False
+    current_timestamp = int(message.edit_date.timestamp()) if message.edit_date else int(message.date.timestamp())
     
-    collected_media.add(message.id)
+    if message.id in collected_media:
+        last_edit = collected_media[message.id]
+        if current_timestamp <= last_edit:
+             return False
+    
+    collected_media[message.id] = current_timestamp
     found_media = False
+
     
     # Check if it's a media message
     if is_media_message(message):
@@ -656,20 +667,10 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
 
     
     # Check for control buttons
-    if message.reply_markup and message.reply_markup.inline_keyboard:
-        # Debug: Log all buttons to see what we are missing
-        all_buttons = []
-        for row in message.reply_markup.inline_keyboard:
-            for btn in row:
-                all_buttons.append(btn.text)
-        logger.info(f"Buttons found in msg {message.id}: {all_buttons}")
-
+    if message.reply_markup:
         # Check for "Send All" button
-        # Add more keywords dynamically or here
-        extended_keywords = Config.SEND_ALL_KEYWORDS + ["start sending", "send files", "received files", "download all"]
-        
         send_all_clicked = await click_button_by_text(
-            client, message, extended_keywords
+            client, message, Config.SEND_ALL_KEYWORDS
         )
         
         if send_all_clicked:
