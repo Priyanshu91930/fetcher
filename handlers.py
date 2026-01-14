@@ -42,25 +42,60 @@ collected_media: dict[int, int] = {} # Map message_id -> edit_date (timestamp)
 
 
 
+PROCESSED_SEASONS_FILE = "processed_seasons.txt"
+
 def load_processed_data():
-    """Load successfully processed series from file."""
+    """Load successfully processed series and seasons from file."""
+    # Load series
     if os.path.exists(PROCESSED_FILE):
         try:
             with open(PROCESSED_FILE, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
-                        processed_series.add(line.strip())
-            logger.info(f"Loaded {len(processed_series)} processed series from {PROCESSED_FILE}")
+                        processed_series.add(normalize_link(line.strip()))
+            logger.info(f"Loaded {len(processed_series)} processed series")
         except Exception as e:
-            logger.error(f"Error loading processed data: {e}")
+            logger.error(f"Error loading processed series: {e}")
+
+    # Load seasons
+    if os.path.exists(PROCESSED_SEASONS_FILE):
+        try:
+            with open(PROCESSED_SEASONS_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        processed_seasons.add(line.strip())
+            logger.info(f"Loaded {len(processed_seasons)} processed seasons")
+        except Exception as e:
+            logger.error(f"Error loading processed seasons: {e}")
 
 def save_processed_series(series_link: str):
     """Save a processed series to file."""
     try:
-        with open(PROCESSED_FILE, "a", encoding="utf-8") as f:
-            f.write(f"{series_link}\n")
+        norm_link = normalize_link(series_link)
+        if norm_link not in processed_series: # Double check before appending
+             with open(PROCESSED_FILE, "a", encoding="utf-8") as f:
+                 f.write(f"{norm_link}\n")
     except Exception as e:
         logger.error(f"Error saving processed data: {e}")
+
+def save_processed_season(season_id: str):
+    """Save a processed season to file."""
+    try:
+        with open(PROCESSED_SEASONS_FILE, "a", encoding="utf-8") as f:
+            f.write(f"{season_id}\n")
+    except Exception as e:
+        logger.error(f"Error saving processed season: {e}")
+
+def normalize_link(link: str) -> str:
+    """Normalize a Telegram link for consistent deduplication."""
+    if not link: return ""
+    link = link.strip()
+    if link.endswith("/"):
+        link = link[:-1]
+    # Ensure consistent protocol? maybe overkill, but good for exact match
+    # Just strip last slash is usually enough for most cases
+    return link
+
 
 
 class BotState:
@@ -218,9 +253,11 @@ async def process_index_channel(client: Client, limit: int = 50, start_link: str
                 continue
             
             # Skip if already processed
-            if series_link in processed_series:
+            norm_link = normalize_link(series_link)
+            if norm_link in processed_series:
                 logger.debug(f"Already processed: {series_name}")
                 continue
+
             
             logger.info(f"Found series: {series_name}")
             await report_status(f"🔄 Processing: {series_name}\nFiles: {state.files_received}")
@@ -447,6 +484,8 @@ async def process_season_buttons(
         
         if success:
             processed_seasons.add(season_id)
+            save_processed_season(season_id)
+
         
         # Delay between seasons
         await safe_sleep(Config.SEASON_BUTTON_DELAY, "between seasons")
