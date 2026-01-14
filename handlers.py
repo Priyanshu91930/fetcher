@@ -593,7 +593,8 @@ async def wait_and_collect_files(
         # Check for new messages from the bot
         if bot_username:
             try:
-                async for message in client.get_chat_history(f"@{bot_username}", limit=10):
+                # Increased limit to ensure we don't miss burst messages
+                async for message in client.get_chat_history(f"@{bot_username}", limit=50):
                     if message.id in collected_media:
                         continue
                     
@@ -655,10 +656,20 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
 
     
     # Check for control buttons
-    if message.reply_markup:
+    if message.reply_markup and message.reply_markup.inline_keyboard:
+        # Debug: Log all buttons to see what we are missing
+        all_buttons = []
+        for row in message.reply_markup.inline_keyboard:
+            for btn in row:
+                all_buttons.append(btn.text)
+        logger.info(f"Buttons found in msg {message.id}: {all_buttons}")
+
         # Check for "Send All" button
+        # Add more keywords dynamically or here
+        extended_keywords = Config.SEND_ALL_KEYWORDS + ["start sending", "send files", "received files", "download all"]
+        
         send_all_clicked = await click_button_by_text(
-            client, message, Config.SEND_ALL_KEYWORDS
+            client, message, extended_keywords
         )
         
         if send_all_clicked:
