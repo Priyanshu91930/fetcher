@@ -713,6 +713,27 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
             logger.debug(f"Skipping duplicate file: {media_info}")
             return False
         
+        # Basic series name matching to filter out unrelated files from misbehaving bots
+        if state.current_series:
+            # Extract filename from media_info (format: "Type: filename (size)")
+            filename = media_info.split(": ")[1].split(" (")[0] if ": " in media_info else ""
+            
+            # Normalize series name for matching (remove special chars, lowercase)
+            series_normalized = state.current_series.lower().replace("'", "").replace(".", "").replace(" ", "")
+            filename_normalized = filename.lower().replace("'", "").replace(".", "").replace(" ", "").replace("_", "")
+            
+            # Check if filename contains series name (fuzzy match)
+            # Extract first significant word (4+ chars) from series name
+            series_words = [w for w in state.current_series.lower().split() if len(w) >= 4]
+            
+            if series_words:
+                # Check if ANY significant word from series name is in filename
+                matches = any(word.replace("'", "").replace(".", "") in filename_normalized for word in series_words)
+                
+                if not matches:
+                    logger.warning(f"Skipping unrelated file: {media_info} (expected: {state.current_series})")
+                    return False
+        
         logger.info(f"Received media: {media_info}")
         
         # Forward to destination
@@ -727,6 +748,7 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
             
             state.files_received += 1
             logger.info(f"Forwarded ({state.files_received}): {media_info}")
+
 
             await report_status(
                 f"🔄 Processing: {state.current_series}\n"
