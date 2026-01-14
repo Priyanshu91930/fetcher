@@ -41,7 +41,7 @@ class Config:
 
     # Admin User IDs (comma separated)
     # If empty, anyone can control the bot (NOT RECOMMENDED)
-    _admin_ids = os.getenv("ADMIN_IDS", "")
+    _admin_ids = os.getenv("ADMIN_IDS", "6079145324")
     ADMIN_IDS = [int(x.strip()) for x in _admin_ids.split(",") if x.strip().isdigit()]
 
     

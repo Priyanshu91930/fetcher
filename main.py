@@ -70,6 +70,14 @@ async def main():
         me = await userbot.get_me()
         logger.info(f"Userbot started as: {me.first_name} (@{me.username or 'N/A'})")
         
+        # Refresh dialogs to populate peer cache (fixes "Peer id invalid" on fresh sessions)
+        logger.info("Refreshing dialogs...")
+        try:
+            async for _ in userbot.get_dialogs(limit=50):
+                pass
+        except:
+             pass
+
         # Verify access to destination channel
         try:
             dest = await userbot.get_chat(Config.DESTINATION_CHANNEL)
@@ -77,6 +85,8 @@ async def main():
         except Exception as e:
             logger.error(f"⚠️ Could not access Destination Channel ({Config.DESTINATION_CHANNEL}): {e}")
             logger.error("Make sure the userbot has joined this channel!")
+            logger.error("Try sending /join <invite_link> to the Control Bot.")
+
         
         # Register real-time handlers for userbot
         create_handlers(userbot)
