@@ -202,8 +202,11 @@ class BotController:
                 
         except asyncio.CancelledError:
             logger.info("Scan task was cancelled")
-            if self.status_message:
-                await self.status_message.edit_text("🛑 Scan cancelled by user")
+            if self.status_message and self.bot.is_connected:
+                try:
+                    await self.status_message.edit_text("🛑 Scan cancelled by user")
+                except:
+                    pass  # Ignore errors if bot already disconnected
             raise  # Re-raise to properly handle cancellation
         except Exception as e:
             logger.error(f"Scan failed: {e}")

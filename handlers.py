@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 # File to store processed series URLs
 PROCESSED_FILE = "processed_series.txt"
+PROCESSED_SEASONS_FILE = "processed_seasons.txt"
+PROCESSED_FILES_FILE = "processed_files.txt"  # Track forwarded files to prevent duplicates
 
 # Track processed items to avoid duplicates
 processed_series: Set[str] = set()  # Track series channel usernames
@@ -41,13 +43,8 @@ processed_seasons: Set[str] = set()  # Track season identifiers
 collected_media: dict[int, int] = {} # Map message_id -> edit_date (timestamp)
 forwarded_files: Set[str] = set()  # Track unique file IDs to prevent duplicate forwards
 
-
-
-
-PROCESSED_SEASONS_FILE = "processed_seasons.txt"
-
 def load_processed_data():
-    """Load successfully processed series and seasons from file."""
+    """Load successfully processed series, seasons, and forwarded files from disk."""
     # Load series
     if os.path.exists(PROCESSED_FILE):
         try:
@@ -69,6 +66,17 @@ def load_processed_data():
             logger.info(f"Loaded {len(processed_seasons)} processed seasons")
         except Exception as e:
             logger.error(f"Error loading processed seasons: {e}")
+    
+    # Load forwarded files
+    if os.path.exists(PROCESSED_FILES_FILE):
+        try:
+            with open(PROCESSED_FILES_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        forwarded_files.add(line.strip())
+            logger.info(f"Loaded {len(forwarded_files)} previously forwarded files")
+        except Exception as e:
+            logger.error(f"Error loading forwarded files: {e}")
 
 def save_processed_series(series_link: str):
     """Save a processed series to file."""
@@ -87,6 +95,14 @@ def save_processed_season(season_id: str):
             f.write(f"{season_id}\n")
     except Exception as e:
         logger.error(f"Error saving processed season: {e}")
+
+def save_forwarded_file(filename: str):
+    """Save a forwarded filename to prevent future duplicates."""
+    try:
+        with open(PROCESSED_FILES_FILE, "a", encoding="utf-8") as f:
+            f.write(f"{filename}\n")
+    except Exception as e:
+        logger.error(f"Error saving forwarded file: {e}")
 
 def normalize_link(link: str) -> str:
     """Normalize a Telegram link for consistent deduplication."""
@@ -856,10 +872,13 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
         
         if success:
             # Mark file as forwarded using both unique_id and filename
+            # Save to in-memory set
             if file_unique_id:
                 forwarded_files.add(file_unique_id)
             if filename:
                 forwarded_files.add(filename)
+                # Persist filename to disk to prevent duplicates across restarts
+                save_forwarded_file(filename)
             
             state.files_received += 1
             logger.info(f"Forwarded ({state.files_received}): {media_info}")
