@@ -164,7 +164,7 @@ class BotController:
                 # Check if we've reached the max auto-fetch limit
                 if posts_processed >= Config.MAX_AUTO_FETCH_POSTS:
                     logger.info(f"Reached max auto-fetch limit: {Config.MAX_AUTO_FETCH_POSTS} posts")
-                    if self.status_message:
+                    if self.status_message and self.bot.is_connected:
                         await self.status_message.edit_text(
                             f"⚠️ Reached auto-fetch limit ({Config.MAX_AUTO_FETCH_POSTS} posts)\n\n"
                             f"📊 Posts processed: {posts_processed}\n"
@@ -180,7 +180,7 @@ class BotController:
                 # Check if we should continue to next post
                 if next_link and Config.AUTO_FETCH_NEXT_POST and not state.stop_requested:
                     logger.info(f"Auto-fetching next post ({posts_processed + 1}): {next_link}")
-                    if self.status_message:
+                    if self.status_message and self.bot.is_connected:
                         await self.status_message.edit_text(
                             f"✅ Post {posts_processed} complete!\n\n"
                             f"🔄 Auto-fetching post {posts_processed + 1}...\n"
@@ -193,7 +193,7 @@ class BotController:
                     break
             
             # Final status message
-            if self.status_message and not state.stop_requested:
+            if self.status_message and not state.stop_requested and self.bot.is_connected:
                 await self.status_message.edit_text(
                     f"✅ All scanning completed!\n\n"
                     f"📊 Posts processed: {posts_processed}\n"

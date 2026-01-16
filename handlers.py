@@ -787,18 +787,33 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
     if is_media_message(message):
         media_info = get_media_info(message)
         
-        # Get unique file identifier to prevent duplicate forwards
+        # Get unique file identifier AND filename for better duplicate detection
         file_unique_id = None
+        filename = ""
+        
         if message.video:
             file_unique_id = message.video.file_unique_id
+            filename = message.video.file_name or ""
         elif message.document:
-            file_unique_id = message.document.file_unique_id
+            file_unique_id = message.document.file_unique_id  
+            filename = message.document.file_name or ""
         elif message.audio:
             file_unique_id = message.audio.file_unique_id
+            filename = message.audio.file_name or ""
         
-        # Skip if we've already forwarded this exact file
+        # Enhanced duplicate detection: check both file_unique_id AND filename
+        # Some bots send same file multiple times with different unique_ids
+        # Using filename (like "Be.Cool.Scooby-Doo.S01E12.720p.mkv") is more reliable
+        is_duplicate = False
+        
         if file_unique_id and file_unique_id in forwarded_files:
-            logger.debug(f"Skipping duplicate file: {media_info}")
+            is_duplicate = True
+            logger.debug(f"Skipping duplicate file (by unique_id): {media_info}")
+        elif filename and filename in forwarded_files:
+            is_duplicate = True
+            logger.debug(f"Skipping duplicate file (by filename): {media_info}")
+        
+        if is_duplicate:
             return False
         
         # Basic series name matching to filter out unrelated files from misbehaving bots
@@ -840,9 +855,11 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
         )
         
         if success:
-            # Mark file as forwarded
+            # Mark file as forwarded using both unique_id and filename
             if file_unique_id:
                 forwarded_files.add(file_unique_id)
+            if filename:
+                forwarded_files.add(filename)
             
             state.files_received += 1
             logger.info(f"Forwarded ({state.files_received}): {media_info}")
