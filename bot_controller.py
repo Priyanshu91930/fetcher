@@ -23,6 +23,7 @@ class BotController:
         )
         self.status_message: Optional[Message] = None
         self.cancel_task = False
+        self.scan_task: Optional[asyncio.Task] = None  # Track the scan task for cancellation
         self._register_handlers()
 
     def _register_handlers(self):
@@ -58,20 +59,34 @@ class BotController:
             self.cancel_task = False
             state.stop_requested = False # Reset stop flag
             
-            # Start scan in background
-            asyncio.create_task(self._run_scan_task(start_link))
+            # Start scan in background and track the task
+            self.scan_task = asyncio.create_task(self._run_scan_task(start_link))
+
 
         @self.bot.on_message(filters.command("stop"))
         async def stop_command(client, message):
             if not self._check_admin(message):
                 return
             
-            if not state.is_processing:
+            if not state.is_processing and not self.scan_task:
                 await message.reply_text("Nothing is running.")
                 return
             
+            # Request graceful stop
             state.stop_requested = True
             await message.reply_text("🛑 Stopping... (might take a moment to finish current item)")
+            
+            # Cancel the scan task if it exists
+            if self.scan_task and not self.scan_task.done():
+                self.scan_task.cancel()
+                try:
+                    await asyncio.wait_for(self.scan_task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    logger.info("Scan task cancelled")
+                
+                # Force reset state
+                self._force_stop()
+                await message.reply_text("✅ Stopped and reset. Ready for new scan.")
 
         @self.bot.on_message(filters.command("status"))
         async def status_command(client, message):
@@ -118,23 +133,84 @@ class BotController:
             return True
         return False
 
+    def _force_stop(self):
+        """Force reset all state when server is stuck."""
+        state.is_processing = False
+        state.stop_requested = False
+        state.waiting_for_files = False
+        state.current_series = ""
+        state.current_season = ""
+        state.files_received = 0
+        state.current_bot_chat_id = None
+        state.progress_callback = None
+        self.status_message = None
+        self.scan_task = None
+        logger.info("Force stopped and reset all state")
+
     async def _run_scan_task(self, start_link):
         try:
             # Inject callback for progress
             state.progress_callback = self.update_progress
             
-            await run_full_scan(self.userbot, limit=100, start_link=start_link)
+            # Auto-fetch loop
+            current_link = start_link
+            posts_processed = 0
             
-            if self.status_message:
-                await self.status_message.edit_text("✅ Scan completed successfully!")
+            while current_link or posts_processed == 0:
+                if state.stop_requested:
+                    logger.info("Stop requested, breaking auto-fetch loop")
+                    break
                 
+                # Check if we've reached the max auto-fetch limit
+                if posts_processed >= Config.MAX_AUTO_FETCH_POSTS:
+                    logger.info(f"Reached max auto-fetch limit: {Config.MAX_AUTO_FETCH_POSTS} posts")
+                    if self.status_message:
+                        await self.status_message.edit_text(
+                            f"⚠️ Reached auto-fetch limit ({Config.MAX_AUTO_FETCH_POSTS} posts)\n\n"
+                            f"📊 Posts processed: {posts_processed}\n"
+                            f"📁 Total files: {state.files_received}\n\n"
+                            f"To continue, use /scan with next post link or increase MAX_AUTO_FETCH_POSTS"
+                        )
+                    break
+                
+                # Run scan and get next post link
+                next_link = await run_full_scan(self.userbot, limit=100, start_link=current_link)
+                posts_processed += 1
+                
+                # Check if we should continue to next post
+                if next_link and Config.AUTO_FETCH_NEXT_POST and not state.stop_requested:
+                    logger.info(f"Auto-fetching next post ({posts_processed + 1}): {next_link}")
+                    if self.status_message:
+                        await self.status_message.edit_text(
+                            f"✅ Post {posts_processed} complete!\n\n"
+                            f"🔄 Auto-fetching post {posts_processed + 1}...\n"
+                            f"Total files: {state.files_received}"
+                        )
+                    await asyncio.sleep(2)  # Brief delay between posts
+                    current_link = next_link
+                else:
+                    # No more posts or auto-fetch disabled
+                    break
+            
+            # Final status message
+            if self.status_message and not state.stop_requested:
+                await self.status_message.edit_text(
+                    f"✅ All scanning completed!\n\n"
+                    f"📊 Posts processed: {posts_processed}\n"
+                    f"📁 Total files: {state.files_received}"
+                )
+                
+        except asyncio.CancelledError:
+            logger.info("Scan task was cancelled")
+            if self.status_message:
+                await self.status_message.edit_text("🛑 Scan cancelled by user")
+            raise  # Re-raise to properly handle cancellation
         except Exception as e:
             logger.error(f"Scan failed: {e}")
             if self.status_message:
                 await self.status_message.edit_text(f"❌ Scan failed: {e}")
         finally:
-            self.status_message = None
-            state.progress_callback = None
+            self._force_stop()
 
     async def update_progress(self, message_text: str):
         """Callback to update progress message."""

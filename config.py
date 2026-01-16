@@ -71,6 +71,11 @@ class Config:
     # File types to forward
     ALLOWED_MEDIA_TYPES = ["video", "document", "audio"]
     
+    # Auto-fetch next post feature
+    AUTO_FETCH_NEXT_POST = os.getenv("AUTO_FETCH_NEXT_POST", "true").lower() == "true"
+    NEXT_POST_KEYWORDS = ["next", "▶️", "➡️", "next post", "→", ">>"]
+    MAX_AUTO_FETCH_POSTS = int(os.getenv("MAX_AUTO_FETCH_POSTS", "50"))  # Limit auto-fetch to prevent infinite loops
+    
     @classmethod
     def validate(cls) -> tuple[bool, list[str]]:
         """Validate that all required configuration is set."""

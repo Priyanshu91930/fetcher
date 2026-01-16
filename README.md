@@ -53,12 +53,16 @@ This bot automates the following workflow:
 - 📁 **File Detection** - Collects video/document files from bots
 - 📤 **Auto Forwarding** - Forwards all media to your channel
 - ⏱️ **Rate Limit Protection** - Configurable delays and FloodWait handling
+- 🤖 **Control Bot** - Telegram bot interface for easy management
+- 🔄 **Auto-Fetch Next Post** - Automatically continues to next post when complete
+- 🛑 **Reliable Stop Command** - Proper task cancellation and server restart
 
 ## 📁 Project Structure
 
 ```
 fetcher/
 ├── main.py              # Entry point - starts the scan
+├── bot_controller.py    # Control bot interface
 ├── config.py            # Configuration from environment
 ├── handlers.py          # Multi-channel flow logic
 ├── utils.py             # Button clicking utilities
@@ -118,10 +122,48 @@ DESTINATION_CHANNEL=-1003321519174
 MAX_SERIES_TO_PROCESS=5
 ```
 
-### 5. Run the Bot
+### 5. Create Control Bot
+
+1. Message [@BotFather](https://t.me/BotFather) on Telegram
+2. Use `/newbot` command
+3. Follow instructions to create your bot
+4. Copy the bot token
+5. Add to `.env`: `BOT_TOKEN=your_bot_token_here`
+6. Add your user ID: `ADMIN_IDS=your_user_id_here`
+
+### 6. Run the Bot
 
 ```bash
 python main.py
+```
+
+You'll see:
+```
+✅ System is ready!
+Send /start to your Control Bot to begin.
+```
+
+### 7. Use the Control Bot
+
+Open your control bot on Telegram:
+
+**Commands:**
+- `/start` - Show help
+- `/scan` - Scan entire index channel
+- `/scan [link]` - Scan specific post
+- `/stop` - Stop current operation
+- `/status` - Check current status
+- `/join [link]` - Join a channel
+
+**Auto-Fetch Example:**
+```
+You: /scan https://t.me/SeriesBayX0/100
+Bot: 🚀 Starting scan...
+     ✅ Post 1 complete!
+     🔄 Auto-fetching post 2...
+     ✅ All scanning completed!
+     📊 Posts processed: 5
+     📁 Total files: 234
 ```
 
 ## ⚙️ Configuration
@@ -133,6 +175,10 @@ python main.py
 | `SESSION_STRING` | Pyrogram session string | Required |
 | `INDEX_CHANNEL` | Index channel with series list | `@SeriesBayX0` |
 | `DESTINATION_CHANNEL` | Your channel to forward to | Required |
+| `BOT_TOKEN` | Control bot token from @BotFather | Required |
+| `ADMIN_IDS` | Comma-separated admin user IDs | Required |
+| `AUTO_FETCH_NEXT_POST` | Auto-continue to next post | `true` |
+| `MAX_AUTO_FETCH_POSTS` | Max posts to auto-fetch (0=unlimited) | `50` |
 | `MAX_SERIES_TO_PROCESS` | Series limit per run (0=unlimited) | `5` |
 | `BUTTON_CLICK_DELAY` | Delay after clicks (sec) | `2.0` |
 | `SEASON_BUTTON_DELAY` | Delay between seasons (sec) | `3.0` |

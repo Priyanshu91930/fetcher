@@ -185,7 +185,7 @@ async def join_channel(client: Client, channel_link: str) -> Optional[int | str]
         return None
 
 
-async def process_index_channel(client: Client, limit: int = 50, start_link: str = None):
+async def process_index_channel(client: Client, limit: int = 50, start_link: str = None) -> Optional[str]:
     """
     Process the index channel to find series links.
     
@@ -193,13 +193,18 @@ async def process_index_channel(client: Client, limit: int = 50, start_link: str
         client: Pyrogram client
         limit: Number of messages to scan
         start_link: Specific message link to process (e.g., https://t.me/c/123/456)
+        
+    Returns:
+        URL to next post if found and auto-fetch is enabled, None otherwise
     """
     logger.info(f"Scanning index channel: {Config.INDEX_CHANNEL}")
     
     series_count = 0
     max_series = Config.MAX_SERIES_TO_PROCESS
+    next_post_link = None
     
     messages_to_process = []
+    current_message = None  # To store the message for next link extraction
     
     if start_link:
         # Process specific message
@@ -215,11 +220,12 @@ async def process_index_channel(client: Client, limit: int = 50, start_link: str
             message = await client.get_messages(chat_id, msg_id)
             if message:
                 messages_to_process.append(message)
+                current_message = message  # Store for next link extraction
             else:
                 logger.error("Could not fetch the specified message.")
         except Exception as e:
             logger.error(f"Error parsing link {start_link}: {e}")
-            return
+            return None
     else:
         # Scan history
         async for message in client.get_chat_history(Config.INDEX_CHANNEL, limit=limit):
@@ -277,7 +283,20 @@ async def process_index_channel(client: Client, limit: int = 50, start_link: str
             await safe_sleep(3, "between series")
             
     logger.info(f"Finished processing. Processed {series_count} series.")
-    await report_status(f"✅ Scan Complete!\nProcessed {series_count} series.")
+    
+    # Extract next post link if auto-fetch is enabled and we processed a specific link
+    if Config.AUTO_FETCH_NEXT_POST and current_message and not state.stop_requested:
+        next_post_link = extract_next_post_link(current_message)
+        if next_post_link:
+            logger.info(f"Auto-fetch enabled: Found next post link: {next_post_link}")
+            await report_status(f"✅ Current post complete!\n📋 Found next post link\nProcessed {series_count} series.")
+        else:
+            await report_status(f"✅ Scan Complete!\nProcessed {series_count} series.\nNo next post found.")
+    else:
+        await report_status(f"✅ Scan Complete!\nProcessed {series_count} series.")
+    
+    return next_post_link
+
 
 async def report_status(text: str):
     """Helper to report status via callback."""
@@ -333,6 +352,75 @@ def extract_series_links(message: Message) -> List[dict]:
                 })
     
     return links
+
+
+def extract_next_post_link(message: Message) -> Optional[str]:
+    """
+    Extract the next post link from a message.
+    
+    Strategy:
+    1. First check for explicit "Next" buttons
+    2. If not found, auto-generate next sequential message link (ID + 1)
+    
+    Args:
+        message: Message to search
+        
+    Returns:
+        URL to next post, or None
+    """
+    # Check inline buttons first for explicit "Next" button
+    if message.reply_markup and message.reply_markup.inline_keyboard:
+        for row in message.reply_markup.inline_keyboard:
+            for button in row:
+                # Check if button text contains next keywords
+                button_text_lower = button.text.lower()
+                if any(keyword in button_text_lower for keyword in Config.NEXT_POST_KEYWORDS):
+                    if button.url and "t.me/" in button.url:
+                        logger.info(f"Found next post link in button: {button.text} -> {button.url}")
+                        return button.url
+    
+    # Check for text entities (links in message text)
+    text = message.text or message.caption or ""
+    entities = message.entities or message.caption_entities or []
+    
+    for entity in entities:
+        entity_type = str(entity.type)
+        
+        if "TEXT_LINK" in entity_type and entity.url:
+            # Get the link text
+            link_text = text[entity.offset:entity.offset + entity.length]
+            link_text_lower = link_text.lower()
+            
+            # Check if it matches next keywords
+            if any(keyword in link_text_lower for keyword in Config.NEXT_POST_KEYWORDS):
+                if "t.me/" in entity.url:
+                    logger.info(f"Found next post link in text: {link_text} -> {entity.url}")
+                    return entity.url
+    
+    # If no explicit "next" button/link found, auto-generate next sequential message link
+    # Pattern: https://t.me/channel/380 -> https://t.me/channel/381
+    if message.chat:
+        next_msg_id = message.id + 1
+        chat_username = message.chat.username
+        
+        if chat_username:
+            # Public channel: https://t.me/channel/msgid
+            next_link = f"https://t.me/{chat_username}/{next_msg_id}"
+            logger.info(f"Auto-generated next post link: {next_link} (sequential ID)")
+            return next_link
+        else:
+            # Private channel: https://t.me/c/chatid/msgid
+            # Remove the -100 prefix from chat.id to get the channel ID
+            chat_id_str = str(message.chat.id)
+            if chat_id_str.startswith("-100"):
+                channel_id = chat_id_str[4:]  # Remove -100 prefix
+                next_link = f"https://t.me/c/{channel_id}/{next_msg_id}"
+                logger.info(f"Auto-generated next post link: {next_link} (sequential ID, private)")
+                return next_link
+    
+    return None
+
+
 
 
 async def process_series_channel(
@@ -718,21 +806,31 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
             # Extract filename from media_info (format: "Type: filename (size)")
             filename = media_info.split(": ")[1].split(" (")[0] if ": " in media_info else ""
             
-            # Normalize series name for matching (remove special chars, lowercase)
-            series_normalized = state.current_series.lower().replace("'", "").replace(".", "").replace(" ", "")
-            filename_normalized = filename.lower().replace("'", "").replace(".", "").replace(" ", "").replace("_", "")
+            # Normalize both series name and filename the same way for comparison
+            # Remove special chars, spaces, commas, hyphens, underscores - keep only alphanumeric
+            def normalize(text):
+                return text.lower().replace("'", "").replace(".", "").replace(" ", "").replace(",", "").replace("-", "").replace("_", "")
             
-            # Check if filename contains series name (fuzzy match)
-            # Extract first significant word (4+ chars) from series name
-            series_words = [w for w in state.current_series.lower().split() if len(w) >= 4]
+            series_normalized = normalize(state.current_series)
+            filename_normalized = normalize(filename)
             
-            if series_words:
-                # Check if ANY significant word from series name is in filename
-                matches = any(word.replace("'", "").replace(".", "") in filename_normalized for word in series_words)
+            # Simple approach: check if the normalized series name is a substring of the normalized filename
+            # This handles "Be Cool, Scooby-Doo!" matching "Be.Cool.Scooby-Doo.S01E12..."
+            if series_normalized in filename_normalized:
+                # Direct match - this is the right series!
+                pass  # Continue to forward
+            else:
+                # Fallback: Check if ANY significant word (4+ chars) from series name is in filename
+                series_words = [w for w in state.current_series.split() if len(w) >= 4]
                 
-                if not matches:
-                    logger.warning(f"Skipping unrelated file: {media_info} (expected: {state.current_series})")
-                    return False
+                if series_words:
+                    # Normalize each word and check
+                    normalized_words = [normalize(word) for word in series_words]
+                    matches = any(word in filename_normalized for word in normalized_words)
+                    
+                    if not matches:
+                        logger.warning(f"Skipping unrelated file: {media_info} (expected: {state.current_series})")
+                        return False
         
         logger.info(f"Received media: {media_info}")
         
@@ -800,7 +898,7 @@ def create_handlers(client: Client):
     logger.info("Real-time handlers registered")
 
 
-async def run_full_scan(client: Client, limit: int = 50, start_link: str = None):
+async def run_full_scan(client: Client, limit: int = 50, start_link: str = None) -> Optional[str]:
     """
     Run a full scan of the index channel.
     
@@ -808,7 +906,12 @@ async def run_full_scan(client: Client, limit: int = 50, start_link: str = None)
         client: Pyrogram client
         limit: Number of messages to scan in index channel
         start_link: Specific message link to process
+        
+    Returns:
+        URL to next post if found, None otherwise
     """
     logger.info("Starting scan...")
-    await process_index_channel(client, limit=limit, start_link=start_link)
+    next_link = await process_index_channel(client, limit=limit, start_link=start_link)
     logger.info("Scan completed")
+    return next_link
+
