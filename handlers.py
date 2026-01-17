@@ -131,6 +131,14 @@ class BotState:
 
 state = BotState()
 
+# Global session manager (set by main.py)
+_session_manager = None
+
+def set_session_manager(session_manager):
+    """Set the global session manager instance."""
+    global _session_manager
+    _session_manager = session_manager
+
 # Load data on module import
 load_processed_data()
 
@@ -194,7 +202,7 @@ async def join_channel(client: Client, channel_link: str) -> Optional[int | str]
                 return None
             
     except FloodWait as e:
-        await handle_flood_wait(e)
+        await handle_flood_wait(e, _session_manager)
         return await join_channel(client, channel_link)
     except Exception as e:
         logger.error(f"Error joining channel {channel_link}: {e}")
@@ -644,7 +652,7 @@ async def click_season_button(
 
             
     except FloodWait as e:
-        await handle_flood_wait(e)
+        await handle_flood_wait(e, _session_manager)
         return await click_season_button(client, message, button)
     except Exception as e:
         logger.error(f"Error clicking season button: {e}")
@@ -697,7 +705,7 @@ async def handle_bot_url(client: Client, url: str) -> bool:
         return True
         
     except FloodWait as e:
-        await handle_flood_wait(e)
+        await handle_flood_wait(e, _session_manager)
         return await handle_bot_url(client, url)
     except Exception as e:
         logger.error(f"Error handling bot URL: {e}")

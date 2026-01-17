@@ -13,8 +13,9 @@ class BotController:
     """
     Controller for the Telegram Bot interface.
     """
-    def __init__(self, userbot_client: Client):
+    def __init__(self, userbot_client: Client, session_manager=None):
         self.userbot = userbot_client
+        self.session_manager = session_manager  # Store session manager for flood wait handling
         self.bot = Client(
             "control_bot",
             api_id=Config.API_ID,

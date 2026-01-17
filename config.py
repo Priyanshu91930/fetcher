@@ -20,6 +20,18 @@ class Config:
     # User session string (generate using session_generator.py)
     SESSION_STRING = os.getenv("SESSION_STRING", "BQI-tA8Ail8rL_YzIckLsCRMfg8GdYsjSwkjT8X46ZZsBphX6azvFKskJja2a27bZaIfNk6SRcViMrOSjEnXNsCVKjLZwfXMSe-xZ4qu-W5HzKfM-NmjHYDVjdhDDeirLk8zkDjqnCi8Tvr_wQS6TGTBTbsHKF3b9QYDo3n8fuXhFn62neXqy6lkYdoIJVnPkIPIYqGC6x4AUjsIX7uhAr5bNXGzKGl7ZYT2kRae0zpnkRMZgjkbQXrzwyCc-ShFLKN3C0kvnicfG_W3hi8t2lCXt9pP2X7cVBcQSH2GFBClas_DYyd4hzhwiI_GW0KI5zAmF8jcCJMv5Dh5DXJM1y_fvWYPLQAAAAFqWGVsAA")
     
+    # Alternate session strings (for flood wait handling)
+    # Add SESSION_STRING_2, SESSION_STRING_3, etc. in .env to enable auto-switching
+    SESSION_STRING_2 = os.getenv("SESSION_STRING_2", "")
+    SESSION_STRING_3 = os.getenv("SESSION_STRING_3", "")
+    
+    # Flood wait handling
+    FLOOD_WAIT_THRESHOLD = int(os.getenv("FLOOD_WAIT_THRESHOLD", "3600"))  # 1 hour in seconds
+    AUTO_SWITCH_SESSION = os.getenv("AUTO_SWITCH_SESSION", "true").lower() == "true"
+    
+    # Global cooldown between operations (to prevent rate limiting)
+    GLOBAL_COOLDOWN = float(os.getenv("GLOBAL_COOLDOWN", "25.0"))  # 25 seconds between major operations
+    
     # INDEX channel - the main channel with series list
     # This is @SeriesBayX0 - contains clickable series links
     INDEX_CHANNEL = os.getenv("INDEX_CHANNEL", "@SeriesBayX0")
@@ -75,6 +87,24 @@ class Config:
     AUTO_FETCH_NEXT_POST = os.getenv("AUTO_FETCH_NEXT_POST", "true").lower() == "true"
     NEXT_POST_KEYWORDS = ["next", "▶️", "➡️", "next post", "→", ">>"]
     MAX_AUTO_FETCH_POSTS = int(os.getenv("MAX_AUTO_FETCH_POSTS", "50"))  # Limit auto-fetch to prevent infinite loops
+    
+    @classmethod
+    def get_all_sessions(cls) -> list[str]:
+        """
+        Get all configured session strings.
+        
+        Returns:
+            List of session strings (non-empty only)
+        """
+        sessions = [cls.SESSION_STRING]
+        
+        # Add alternate sessions if configured
+        if cls.SESSION_STRING_2:
+            sessions.append(cls.SESSION_STRING_2)
+        if cls.SESSION_STRING_3:
+            sessions.append(cls.SESSION_STRING_3)
+        
+        return sessions
     
     @classmethod
     def validate(cls) -> tuple[bool, list[str]]:

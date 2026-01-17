@@ -33,16 +33,40 @@ async def safe_sleep(seconds: float, reason: str = ""):
     await asyncio.sleep(seconds)
 
 
-async def handle_flood_wait(e: FloodWait):
+async def handle_flood_wait(e: FloodWait, session_manager=None):
     """
     Handle FloodWait exception by sleeping for the required duration.
+    If wait time exceeds threshold and session manager is available, trigger session switch.
     
     Args:
         e: FloodWait exception
+        session_manager: Optional SessionManager instance for session switching
+        
+    Raises:
+        LongFloodWaitException: If wait time exceeds threshold and session switching is enabled
     """
-    wait_time = e.value + 5  # Add 5 seconds buffer
-    logger.warning(f"FloodWait detected! Sleeping for {wait_time} seconds...")
-    await asyncio.sleep(wait_time)
+    from config import Config
+    from session_manager import LongFloodWaitException
+    
+    wait_time = e.value
+    logger.warning(f"⚠️ FloodWait detected! Required wait: {wait_time} seconds ({wait_time / 60:.1f} minutes)")
+    
+    # Check if we should switch sessions instead of waiting
+    if (Config.AUTO_SWITCH_SESSION and 
+        session_manager and 
+        session_manager.has_alternate_sessions() and 
+        wait_time > Config.FLOOD_WAIT_THRESHOLD):
+        
+        logger.warning(
+            f"🚨 FloodWait ({wait_time}s) exceeds threshold ({Config.FLOOD_WAIT_THRESHOLD}s). "
+            f"Triggering session switch..."
+        )
+        raise LongFloodWaitException(wait_time, Config.FLOOD_WAIT_THRESHOLD)
+    
+    # Normal wait (with buffer)
+    wait_with_buffer = wait_time + 5
+    logger.info(f"Sleeping for {wait_with_buffer} seconds (wait time + 5s buffer)...")
+    await asyncio.sleep(wait_with_buffer)
 
 
 def find_button_by_text(
