@@ -3,5 +3,7 @@ __pycache__/
 .env
 *.log
 processed_series.txt
+processed_files.txt
+processed_seasons.txt
 *.session
 *.session-journal
