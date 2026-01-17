@@ -687,6 +687,9 @@ async def handle_bot_url(client: Client, url: str) -> bool:
         
         logger.info(f"Starting bot @{bot_username} with param: {start_param}")
         
+        # Capture interaction start time BEFORE sending command
+        interaction_start_time = asyncio.get_event_loop().time()
+        
         # Send /start command to the bot
         if start_param:
             await client.send_message(f"@{bot_username}", f"/start {start_param}")
@@ -699,7 +702,7 @@ async def handle_bot_url(client: Client, url: str) -> bool:
         state.waiting_for_files = True
         state.current_bot_chat_id = None  # Will be set when we receive a message
         
-        await wait_and_collect_files(client, bot_username)
+        await wait_and_collect_files(client, bot_username, interaction_start_time=interaction_start_time)
         
         state.waiting_for_files = False
         return True
@@ -715,7 +718,8 @@ async def handle_bot_url(client: Client, url: str) -> bool:
 async def wait_and_collect_files(
     client: Client, 
     bot_username: str = None,
-    timeout: float = None
+    timeout: float = None,
+    interaction_start_time: float = None
 ):
     """
     Wait for and collect files sent by the file bot.
@@ -724,13 +728,17 @@ async def wait_and_collect_files(
         client: Pyrogram client
         bot_username: Expected bot username
         timeout: Override default timeout
+        interaction_start_time: Timestamp when bot interaction started (for filtering old messages)
     """
     timeout = timeout or Config.FILE_WAIT_TIMEOUT
     logger.info(f"Waiting for files from {bot_username or 'any bot'}... (timeout: {timeout}s)")
     
-    start_time = asyncio.get_event_loop().time()
+    # Use provided interaction start time or current time
+    start_time = interaction_start_time or asyncio.get_event_loop().time()
+    current_time = asyncio.get_event_loop().time()
+    
     state.files_received = 0
-    last_activity = start_time
+    last_activity = current_time
     
     while True:
         current_time = asyncio.get_event_loop().time()
@@ -766,7 +774,10 @@ async def wait_and_collect_files(
                             continue # No new changes
                     
                     # Check if this is a recent message (within our session)
-                    if message.date.timestamp() < start_time - 60 and not message.edit_date:  # Skip old messages unless edited
+                    # Allow messages from up to 120 seconds before interaction start
+                    # This catches files sent immediately after /start
+                    message_time = message.date.timestamp()
+                    if message_time < start_time - 120 and not message.edit_date:
                         continue
 
                     
