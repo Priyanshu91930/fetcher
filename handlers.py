@@ -857,9 +857,9 @@ async def handle_file_bot_message(client: Client, message: Message) -> bool:
             filename = media_info.split(": ")[1].split(" (")[0] if ": " in media_info else ""
             
             # Normalize both series name and filename the same way for comparison
-            # Remove special chars, spaces, commas, hyphens, underscores - keep only alphanumeric
+            # Remove special chars, spaces, commas, hyphens, underscores, colons - keep only alphanumeric
             def normalize(text):
-                return text.lower().replace("'", "").replace(".", "").replace(" ", "").replace(",", "").replace("-", "").replace("_", "")
+                return text.lower().replace("'", "").replace(".", "").replace(" ", "").replace(",", "").replace("-", "").replace("_", "").replace(":", "")
             
             series_normalized = normalize(state.current_series)
             filename_normalized = normalize(filename)
